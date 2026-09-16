@@ -1,18 +1,3 @@
-since Version 2.23 (to 2.25):
-
-Bugfixes:
--- Add absorb
-
-Improvements:
-
-
-Changes:
-
-
-Features:
-
-
---------------------------------------------------------------
 since Version 2.22 (to 2.23):
 
 Bugfixes:

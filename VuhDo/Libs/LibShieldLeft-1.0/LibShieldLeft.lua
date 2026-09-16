@@ -503,7 +503,7 @@ local ClassSpecific = nil
 
 -- Priest
 
---[[if (playerClass == "PRIEST") then
+if (playerClass == "PRIEST") then
 	ClassSpecific = {}
 
 	local PWShield = GetSpellInfo(17)
@@ -664,7 +664,7 @@ local ClassSpecific = nil
 		end
 	end
 end
---]]
+
 function lib:DefaultShieldData(shieldData, rank, duration, count)
 		if not shieldData.minAmount then
 				return 0, duration
