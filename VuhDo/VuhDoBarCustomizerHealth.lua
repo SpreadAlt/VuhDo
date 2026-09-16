@@ -798,7 +798,6 @@ end
 
 
 (function()
-
 local pairs = pairs;
 local type = type;
 local min = math.min;
@@ -815,62 +814,25 @@ local VUHDO_ABSORB_TEXTURES = setmetatable({}, { __mode = "k" });
 local VUHDO_ABSORB_LAST = setmetatable({}, { __mode = "k" });
 local VUHDO_ABSORB_REFRESH = 0;
 local VUHDO_ABSORB_INTERVAL = 0.10;
-
-local FALLBACK_ABSORB = { 0.35, 0.65, 1.00, 0.90 };
-local FALLBACK_OVERABSORB = { 0.20, 0.85, 1.00, 0.95 };
+local VUHDO_ABSORB_COLOR = { 0.35, 0.65, 1.00, 0.90 };
+local VUHDO_OVERABSORB_COLOR = { 0.20, 0.85, 1.00, 0.95 };
 
 local function VUHDO_getAbsorbAmount(aUnit)
-	if (type(_G["UnitGetTotalAbsorbs"]) == "function") then
-		local tOk, tValue = pcall(_G["UnitGetTotalAbsorbs"], aUnit);
-		if (tOk and type(tValue) == "number") then
-			return max(0, tValue);
-		end
-	end
-
-	local tLibStub = _G["LibStub"];
-	if (not tLibStub or not UnitGUID) then
+	if (type(_G["UnitGetTotalAbsorbs"]) ~= "function") then
 		return 0;
 	end
 
-	local tShieldLeft = tLibStub:GetLibrary("LibShieldLeft-1.0", true);
-	if (not tShieldLeft or type(tShieldLeft.GetActiveShields) ~= "function") then
+	local tOk, tValue = pcall(_G["UnitGetTotalAbsorbs"], aUnit);
+	if (not tOk or type(tValue) ~= "number") then
 		return 0;
 	end
 
-	local tGuid = UnitGUID(aUnit);
-	if (not tGuid) then
-		return 0;
-	end
-
-	local tOk2, tShields = pcall(tShieldLeft.GetActiveShields, tShieldLeft, tGuid, false);
-	if (not tOk2 or type(tShields) ~= "table") then
-		return 0;
-	end
-
-	local tTotal = 0;
-	for _, tShield in pairs(tShields) do
-		if (tShield and type(tShield.amountLeft) == "number" and tShield.amountLeft > 0) then
-			tTotal = tTotal + tShield.amountLeft;
-		end
-	end
-	return tTotal;
+	return max(0, tValue);
 end
 
-local function VUHDO_getElvAbsorbColor(anIsOverAbsorb)
-	local tElvUI = _G["ElvUI"];
-	local tEngine = type(tElvUI) == "table" and tElvUI[1] or nil;
-	local tDb = tEngine and tEngine.db;
-	local tUnitFrame = tDb and tDb.unitframe;
-	local tColors = tUnitFrame and tUnitFrame.colors;
-	local tAbsorbColors = tColors and tColors.absorbPrediction;
-	local tColor = tAbsorbColors and (anIsOverAbsorb and tAbsorbColors.overabsorbs or tAbsorbColors.absorbs);
-
-	if (tColor and tColor.r and tColor.g and tColor.b) then
-		return tColor.r, tColor.g, tColor.b, tColor.a or 1;
-	end
-
-	local tFallback = anIsOverAbsorb and FALLBACK_OVERABSORB or FALLBACK_ABSORB;
-	return tFallback[1], tFallback[2], tFallback[3], tFallback[4];
+local function VUHDO_getAbsorbColor(anIsOverAbsorb)
+	local tColor = anIsOverAbsorb and VUHDO_OVERABSORB_COLOR or VUHDO_ABSORB_COLOR;
+	return tColor[1], tColor[2], tColor[3], tColor[4];
 end
 
 local function VUHDO_getOrCreateAbsorbTexture(aHealthBar)
@@ -974,7 +936,6 @@ local function VUHDO_updateAbsorbButton(aButton, aUnit, aForce)
 	local tStart = 100 * (tHealth - tVisibleAbsorb) / tHealthMax;
 	local tFinish = 100 * tHealth / tHealthMax;
 	local tOver = (tHealth + tAbsorb) >= tHealthMax;
-
 	local tWidth = tHealthBar:GetWidth() or 0;
 	local tHeight = tHealthBar:GetHeight() or 0;
 	local tState = floor(tStart * 10 + 0.5) .. ":" .. floor(tFinish * 10 + 0.5) .. ":" .. (tOver and "1" or "0") .. ":" .. floor(tWidth + 0.5) .. ":" .. floor(tHeight + 0.5) .. ":" .. tostring(tHealthBar.txOrient or 1) .. ":" .. tostring(tHealthBar.isInverted and 1 or 0);
@@ -983,7 +944,7 @@ local function VUHDO_updateAbsorbButton(aButton, aUnit, aForce)
 	end
 	VUHDO_ABSORB_LAST[tHealthBar] = tState;
 
-	local r, g, b, a = VUHDO_getElvAbsorbColor(tOver);
+	local r, g, b, a = VUHDO_getAbsorbColor(tOver);
 	tTexture:SetVertexColor(r, g, b, a);
 	VUHDO_placeAbsorbTexture(tHealthBar, tTexture, tStart, tFinish);
 end
@@ -1037,7 +998,6 @@ VuhDoAbsorbEventFrame:RegisterEvent("UNIT_MAXHEALTH");
 VuhDoAbsorbEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD");
 VuhDoAbsorbEventFrame:RegisterEvent("RAID_ROSTER_UPDATE");
 VuhDoAbsorbEventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED");
-
 pcall(VuhDoAbsorbEventFrame.RegisterEvent, VuhDoAbsorbEventFrame, "UNIT_ABSORB_AMOUNT_CHANGED");
 
 VuhDoAbsorbEventFrame:SetScript("OnEvent", function(_, anEvent, anArg1)
@@ -1063,5 +1023,4 @@ SlashCmdList["VUHDOABSORB"] = function()
 	DEFAULT_CHAT_FRAME:AddMessage("VuhDo Absorb: API=" .. tApi .. ", player=" .. tostring(tAmount));
 	VUHDO_updateAllAbsorbs(true);
 end;
-
 end)();
