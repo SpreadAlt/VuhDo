@@ -795,3 +795,232 @@ function VUHDO_updateAllRaidBars()
 		VUHDO_REMOVE_HOTS = true;
 	end
 end
+
+
+(function()
+local pairs = pairs;
+local type = type;
+local min = math.min;
+local max = math.max;
+local floor = math.floor;
+local UnitExists = UnitExists;
+local UnitHealth = UnitHealth;
+local UnitHealthMax = UnitHealthMax;
+local UnitGUID = UnitGUID;
+local UnitIsConnected = UnitIsConnected;
+local UnitIsDeadOrGhost = UnitIsDeadOrGhost;
+
+local VUHDO_ABSORB_TEXTURES = setmetatable({}, { __mode = "k" });
+local VUHDO_ABSORB_LAST = setmetatable({}, { __mode = "k" });
+local VUHDO_ABSORB_REFRESH = 0;
+local VUHDO_ABSORB_INTERVAL = 0.10;
+local VUHDO_ABSORB_COLOR = { 0.35, 0.65, 1.00, 0.90 };
+local VUHDO_OVERABSORB_COLOR = { 0.20, 0.85, 1.00, 0.95 };
+
+local function VUHDO_getAbsorbAmount(aUnit)
+	if (type(_G["UnitGetTotalAbsorbs"]) ~= "function") then
+		return 0;
+	end
+
+	local tOk, tValue = pcall(_G["UnitGetTotalAbsorbs"], aUnit);
+	if (not tOk or type(tValue) ~= "number") then
+		return 0;
+	end
+
+	return max(0, tValue);
+end
+
+local function VUHDO_getAbsorbColor(anIsOverAbsorb)
+	local tColor = anIsOverAbsorb and VUHDO_OVERABSORB_COLOR or VUHDO_ABSORB_COLOR;
+	return tColor[1], tColor[2], tColor[3], tColor[4];
+end
+
+local function VUHDO_getOrCreateAbsorbTexture(aHealthBar)
+	if (not aHealthBar) then
+		return nil;
+	end
+
+	local tTexture = VUHDO_ABSORB_TEXTURES[aHealthBar];
+	if (not tTexture) then
+		tTexture = aHealthBar:CreateTexture(nil, "OVERLAY");
+		tTexture:SetBlendMode("BLEND");
+		tTexture:Hide();
+		VUHDO_ABSORB_TEXTURES[aHealthBar] = tTexture;
+	end
+
+	local tHealthTexture = aHealthBar.texture;
+	if (tHealthTexture and tHealthTexture.GetTexture) then
+		local tPath = tHealthTexture:GetTexture();
+		if (tPath) then
+			tTexture:SetTexture(tPath);
+		else
+			tTexture:SetTexture("Interface\\TargetingFrame\\UI-StatusBar");
+		end
+	else
+		tTexture:SetTexture("Interface\\TargetingFrame\\UI-StatusBar");
+	end
+
+	return tTexture;
+end
+
+local function VUHDO_placeAbsorbTexture(aHealthBar, aTexture, aStartPercent, anEndPercent)
+	local tStart = max(0, min(1, aStartPercent * 0.01));
+	local tFinish = max(0, min(1, anEndPercent * 0.01));
+	if (tFinish <= tStart) then
+		aTexture:Hide();
+		return;
+	end
+
+	local tOrient = aHealthBar.txOrient or 1;
+	local tInverted = aHealthBar.isInverted and true or false;
+
+	if (tInverted) then
+		tStart, tFinish = 1 - tFinish, 1 - tStart;
+	end
+
+	aTexture:ClearAllPoints();
+	aTexture:SetTexCoord(0, 1, 0, 1);
+
+	if (tOrient == 1) then
+		aTexture:SetPoint("TOPLEFT", aHealthBar, "TOPLEFT", tStart * aHealthBar:GetWidth(), 0);
+		aTexture:SetPoint("BOTTOMRIGHT", aHealthBar, "BOTTOMLEFT", tFinish * aHealthBar:GetWidth(), 0);
+	elseif (tOrient == 2) then
+		aTexture:SetPoint("TOPRIGHT", aHealthBar, "TOPRIGHT", -tStart * aHealthBar:GetWidth(), 0);
+		aTexture:SetPoint("BOTTOMLEFT", aHealthBar, "BOTTOMRIGHT", -tFinish * aHealthBar:GetWidth(), 0);
+	elseif (tOrient == 3) then
+		aTexture:SetPoint("BOTTOMLEFT", aHealthBar, "BOTTOMLEFT", 0, tStart * aHealthBar:GetHeight());
+		aTexture:SetPoint("TOPRIGHT", aHealthBar, "BOTTOMRIGHT", 0, tFinish * aHealthBar:GetHeight());
+	else
+		aTexture:SetPoint("TOPLEFT", aHealthBar, "TOPLEFT", 0, -tStart * aHealthBar:GetHeight());
+		aTexture:SetPoint("BOTTOMRIGHT", aHealthBar, "TOPRIGHT", 0, -tFinish * aHealthBar:GetHeight());
+	end
+
+	aTexture:Show();
+end
+
+local function VUHDO_updateAbsorbButton(aButton, aUnit, aForce)
+	if (not aButton or not aUnit or not UnitExists(aUnit) or not VUHDO_getHealthBar) then
+		return;
+	end
+
+	local tHealthBar = VUHDO_getHealthBar(aButton, 1);
+	if (not tHealthBar) then
+		return;
+	end
+
+	local tTexture = VUHDO_getOrCreateAbsorbTexture(tHealthBar);
+	if (not tTexture) then
+		return;
+	end
+
+	if ((UnitIsConnected and not UnitIsConnected(aUnit)) or (UnitIsDeadOrGhost and UnitIsDeadOrGhost(aUnit))) then
+		tTexture:Hide();
+		VUHDO_ABSORB_LAST[tHealthBar] = nil;
+		return;
+	end
+
+	local tHealthMax = UnitHealthMax(aUnit) or 0;
+	local tHealth = UnitHealth(aUnit) or 0;
+	local tAbsorb = VUHDO_getAbsorbAmount(aUnit) or 0;
+
+	if (tHealthMax <= 0 or tAbsorb <= 0) then
+		tTexture:Hide();
+		VUHDO_ABSORB_LAST[tHealthBar] = nil;
+		return;
+	end
+
+	tHealth = max(0, min(tHealth, tHealthMax));
+	tAbsorb = max(0, tAbsorb);
+
+	local tVisibleAbsorb = min(tAbsorb, tHealth);
+	local tStart = 100 * (tHealth - tVisibleAbsorb) / tHealthMax;
+	local tFinish = 100 * tHealth / tHealthMax;
+	local tOver = (tHealth + tAbsorb) >= tHealthMax;
+	local tWidth = tHealthBar:GetWidth() or 0;
+	local tHeight = tHealthBar:GetHeight() or 0;
+	local tState = floor(tStart * 10 + 0.5) .. ":" .. floor(tFinish * 10 + 0.5) .. ":" .. (tOver and "1" or "0") .. ":" .. floor(tWidth + 0.5) .. ":" .. floor(tHeight + 0.5) .. ":" .. tostring(tHealthBar.txOrient or 1) .. ":" .. tostring(tHealthBar.isInverted and 1 or 0);
+	if (not aForce and VUHDO_ABSORB_LAST[tHealthBar] == tState and tTexture:IsShown()) then
+		return;
+	end
+	VUHDO_ABSORB_LAST[tHealthBar] = tState;
+
+	local r, g, b, a = VUHDO_getAbsorbColor(tOver);
+	tTexture:SetVertexColor(r, g, b, a);
+	VUHDO_placeAbsorbTexture(tHealthBar, tTexture, tStart, tFinish);
+end
+
+function VUHDO_updateAbsorbFor(aUnit, aForce)
+	if (not aUnit or not VUHDO_getUnitButtons) then
+		return;
+	end
+
+	local tButtons = VUHDO_getUnitButtons(aUnit);
+	if (not tButtons) then
+		return;
+	end
+
+	for _, tButton in pairs(tButtons) do
+		VUHDO_updateAbsorbButton(tButton, aUnit, aForce);
+	end
+end
+
+local function VUHDO_updateAllAbsorbs(aForce)
+	if (not VUHDO_UNIT_BUTTONS) then
+		return;
+	end
+
+	for tUnit in pairs(VUHDO_UNIT_BUTTONS) do
+		VUHDO_updateAbsorbFor(tUnit, aForce);
+	end
+end
+
+if (hooksecurefunc) then
+	if (type(_G["VUHDO_updateHealthBarsFor"]) == "function") then
+		hooksecurefunc("VUHDO_updateHealthBarsFor", function(aUnit)
+			VUHDO_updateAbsorbFor(aUnit, true);
+		end);
+	end
+
+	if (type(_G["VUHDO_customizeHealButton"]) == "function") then
+		hooksecurefunc("VUHDO_customizeHealButton", function(aButton)
+			local tUnit = aButton and aButton.GetAttribute and aButton:GetAttribute("unit");
+			if (tUnit) then
+				VUHDO_updateAbsorbButton(aButton, tUnit, true);
+			end
+		end);
+	end
+end
+
+local VuhDoAbsorbEventFrame = CreateFrame("Frame");
+VuhDoAbsorbEventFrame:RegisterEvent("UNIT_AURA");
+VuhDoAbsorbEventFrame:RegisterEvent("UNIT_HEALTH");
+VuhDoAbsorbEventFrame:RegisterEvent("UNIT_MAXHEALTH");
+VuhDoAbsorbEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD");
+VuhDoAbsorbEventFrame:RegisterEvent("RAID_ROSTER_UPDATE");
+VuhDoAbsorbEventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED");
+pcall(VuhDoAbsorbEventFrame.RegisterEvent, VuhDoAbsorbEventFrame, "UNIT_ABSORB_AMOUNT_CHANGED");
+
+VuhDoAbsorbEventFrame:SetScript("OnEvent", function(_, anEvent, anArg1)
+	if ((anEvent == "UNIT_AURA" or anEvent == "UNIT_HEALTH" or anEvent == "UNIT_MAXHEALTH" or anEvent == "UNIT_ABSORB_AMOUNT_CHANGED") and anArg1) then
+		VUHDO_updateAbsorbFor(anArg1, true);
+	else
+		VUHDO_updateAllAbsorbs(true);
+	end
+end);
+
+VuhDoAbsorbEventFrame:SetScript("OnUpdate", function(_, anElapsed)
+	VUHDO_ABSORB_REFRESH = VUHDO_ABSORB_REFRESH + (anElapsed or 0);
+	if (VUHDO_ABSORB_REFRESH >= VUHDO_ABSORB_INTERVAL) then
+		VUHDO_ABSORB_REFRESH = 0;
+		VUHDO_updateAllAbsorbs(false);
+	end
+end);
+
+SLASH_VUHDOABSORB1 = "/vdabsorb";
+SlashCmdList["VUHDOABSORB"] = function()
+	local tApi = type(_G["UnitGetTotalAbsorbs"]);
+	local tAmount = VUHDO_getAbsorbAmount("player") or 0;
+	DEFAULT_CHAT_FRAME:AddMessage("VuhDo Absorb: API=" .. tApi .. ", player=" .. tostring(tAmount));
+	VUHDO_updateAllAbsorbs(true);
+end;
+end)();

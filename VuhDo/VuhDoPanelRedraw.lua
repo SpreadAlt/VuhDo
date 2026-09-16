@@ -737,10 +737,10 @@ local function VUHDO_initCustomDebuffs()
 		tCounter = VUHDO_getBarIconCounter(sButton, tCnt + 40);
 		-- tCounter:ClearAllPoints();
 		tCounter:SetPoint("TOPLEFT", tIcon:GetName(), "TOPLEFT", 0, 5);
-		tCounter:SetFont(VUHDO_FONT_HOTS, 15, tOutlineText);
+		tCounter:SetFont(VUHDO_FONT_HOTS, 57, tOutlineText);
 		tCounter:SetShadowColor(0, 0, 0, tShadowAlpha);
 		tCounter:SetShadowOffset(1, -0.5);
-		tCounter:SetTextColor(0, 1, 0, 1);
+		tCounter:SetTextColor(1, 0, 0, 1);
 
 		tCounter:SetText("");
 		tCounter:Show();
